@@ -1,0 +1,13 @@
+{
+  "name": "sireprinting-chatbot",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Sire Printing custom chatbot - embeddable AI avatar sales assistant for custom printing and packaging",
+  "scripts": {
+    "install:all": "npm install --prefix backend",
+    "db": "bash backend/scripts/ensure-db.sh",
+    "db:stop": "$HOME/mongodb7/bin/mongod --dbpath $HOME/mongodb7/data --shutdown",
+    "dev": "npm run dev --prefix backend",
+    "start": "npm start --prefix backend"
+  }
+}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sire Printing chatbot – demo page</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; color: #0f172a; }
+      .hero { padding: 80px 24px; text-align: center; background: linear-gradient(180deg, #eef2ff, #fff); }
+      .hero h1 { font-size: 34px; margin: 0 0 10px; }
+      .hero p { color: #475569; max-width: 520px; margin: 0 auto; }
+      main { max-width: 640px; margin: 40px auto; padding: 0 24px 120px; line-height: 1.6; color: #334155; }
+      code { background: #f1f5f9; padding: 2px 6px; border-radius: 5px; font-size: 13px; }
+      pre { background: #0f172a; color: #e2e8f0; padding: 16px; border-radius: 10px; overflow-x: auto; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>Sire Printing</h1>
+      <p>Demo page. The chat bubble in the bottom-right is the embeddable Sire Printing assistant widget.</p>
+      <p style="font-size:13px;margin-top:14px">
+        Try it: open the bubble, then use the <b>phone icon</b> for a hands-free voice call,
+        or the <b>document icon</b> to open the callback form.
+      </p>
+    </div>
+    <main>
+      <h2>How the embed works</h2>
+      <p>On a real site you paste this once, just before <code>&lt;/body&gt;</code>:</p>
+      <pre>&lt;script src="https://chat.yourdomain.com/widget.js"
+        data-sireprinting-id="default"
+        data-title="Sire Printing"
+        data-accent="#4f46e5"
+        data-position="br"
+        async&gt;&lt;/script&gt;</pre>
+      <p>
+        You can also control it from your own buttons:
+        <code>SirePrinting.open()</code>, <code>SirePrinting.close()</code>, <code>SirePrinting.toggle()</code>.
+      </p>
+    </main>
+
+    <!-- The widget, loaded from this same server -->
+    <script src="/widget.js" data-sireprinting-id="demo" data-title="Sire Printing" data-accent="#4f46e5" async></script>
+  </body>
+</html>

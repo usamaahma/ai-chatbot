@@ -1,0 +1,29 @@
+{
+  "name": "sireprinting-chatbot-backend",
+  "version": "2.0.0",
+  "description": "Sire Printing custom chatbot - embeddable AI avatar sales assistant: chat API, conversation + order storage, admin dashboard, embeddable widget",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "predev": "bash scripts/ensure-db.sh",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "chatbot",
+    "avatar",
+    "gemini",
+    "packaging",
+    "widget"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^2.21.0",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^7.4.1",
+    "mongoose": "^8.8.3",
+    "nanoid": "^3.3.11"
+  }
+}

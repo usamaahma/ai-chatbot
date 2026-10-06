@@ -1,0 +1,8 @@
+# Secrets and local-only files: never upload. Set env vars in the Vercel dashboard.
+.env
+.env.*
+!.env.example
+node_modules
+deploy
+ecosystem.config.js
+scripts

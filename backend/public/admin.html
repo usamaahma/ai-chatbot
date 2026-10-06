@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sire Printing Chatbot — Admin</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f1f5f9; color: #0f172a; }
+      header { background: #4f46e5; color: #fff; padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+      header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+      header .sp { margin-left: auto; }
+      button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid transparent; }
+      .btn-light { background: rgba(255,255,255,.15); color: #fff; border-color: rgba(255,255,255,.3); padding: 6px 12px; }
+      .wrap { max-width: 1000px; margin: 0 auto; padding: 20px; }
+
+      .login { max-width: 360px; margin: 12vh auto; background: #fff; padding: 28px; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.1); }
+      .login h2 { margin: 0 0 4px; font-size: 18px; }
+      .login p { margin: 0 0 18px; color: #64748b; font-size: 13px; }
+      .login input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; }
+      .login button { width: 100%; margin-top: 12px; background: #4f46e5; color: #fff; padding: 10px; }
+      .err { color: #b91c1c; font-size: 13px; margin-top: 10px; }
+
+      .stats { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+      .stat { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px 18px; min-width: 130px; }
+      .stat b { display: block; font-size: 24px; }
+      .stat span { color: #64748b; font-size: 12px; }
+
+      .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+      .tabs button { background: #fff; border: 1px solid #e2e8f0; padding: 8px 16px; color: #475569; }
+      .tabs button.active { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+
+      table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+      th, td { text-align: left; padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+      th { background: #f8fafc; color: #64748b; font-weight: 600; }
+      tr:last-child td { border-bottom: 0; }
+      td select { font: inherit; padding: 4px 6px; border-radius: 6px; border: 1px solid #cbd5e1; }
+      .link { color: #4f46e5; cursor: pointer; text-decoration: underline; background: none; border: 0; padding: 0; font: inherit; }
+      .muted { color: #94a3b8; }
+      .empty { padding: 40px; text-align: center; color: #94a3b8; }
+
+      .overlay { position: fixed; inset: 0; background: rgba(15,23,42,.5); display: none; align-items: center; justify-content: center; padding: 20px; }
+      .overlay.show { display: flex; }
+      .modal { background: #fff; border-radius: 14px; max-width: 560px; width: 100%; max-height: 80vh; display: flex; flex-direction: column; }
+      .modal header { background: #fff; color: #0f172a; border-bottom: 1px solid #e2e8f0; }
+      .modal header h1 { font-size: 15px; }
+      .modal .body { padding: 16px 20px; overflow-y: auto; }
+      .bubble { margin: 6px 0; padding: 8px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; white-space: pre-wrap; max-width: 85%; }
+      .bubble.user { background: #4f46e5; color: #fff; margin-left: auto; border-bottom-right-radius: 3px; }
+      .bubble.assistant { background: #f1f5f9; border-bottom-left-radius: 3px; }
+      .ordercard { background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 10px; padding: 10px 12px; font-size: 12px; margin-bottom: 10px; }
+      .ordercard dt { font-weight: 600; color: #065f46; }
+      .close-x { margin-left: auto; background: none; border: 0; font-size: 20px; cursor: pointer; color: #64748b; }
+    </style>
+  </head>
+  <body>
+    <div id="login" class="login">
+      <h2>Sire Printing — Chatbot Admin</h2>
+      <p>Enter the admin token (the <code>ADMIN_TOKEN</code> value from the server <code>.env</code>).</p>
+      <input id="token" type="password" placeholder="Admin token" />
+      <button id="loginBtn">Sign in</button>
+      <div id="loginErr" class="err" hidden></div>
+    </div>
+
+    <div id="app" hidden>
+      <header>
+        <h1>Sire Printing — Chatbot Admin</h1>
+        <div class="sp"></div>
+        <button id="refresh" class="btn-light">Refresh</button>
+        <button id="logout" class="btn-light">Log out</button>
+      </header>
+      <div class="wrap">
+        <div class="stats" id="stats"></div>
+        <div class="tabs">
+          <button data-tab="orders" class="active">Orders</button>
+          <button data-tab="leads">Leads</button>
+          <button data-tab="conversations">Conversations</button>
+        </div>
+        <div id="view"></div>
+      </div>
+    </div>
+
+    <div class="overlay" id="overlay">
+      <div class="modal">
+        <header>
+          <h1 id="mTitle">Conversation</h1>
+          <button class="close-x" id="mClose">&times;</button>
+        </header>
+        <div class="body" id="mBody"></div>
+      </div>
+    </div>
+
+    <script>
+      var TOKEN_KEY = 'sireprinting:admin';
+      var token = localStorage.getItem(TOKEN_KEY) || '';
+      var tab = 'orders';
+
+      var $ = function (id) { return document.getElementById(id); };
+
+      async function api(path, opts) {
+        opts = opts || {};
+        opts.headers = Object.assign({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }, opts.headers || {});
+        var res = await fetch('/api/admin' + path, opts);
+        if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+        if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+        return res.json();
+      }
+
+      function logout() {
+        token = '';
+        localStorage.removeItem(TOKEN_KEY);
+        $('app').hidden = true;
+        $('login').hidden = false;
+      }
+
+      function fmtDate(s) {
+        var d = new Date(s);
+        return d.toLocaleString();
+      }
+
+      function esc(s) {
+        return (s == null ? '' : String(s)).replace(/[&<>"]/g, function (c) {
+          return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+        });
+      }
+
+      var STATUSES = ['new', 'contacted', 'quoted', 'won', 'lost'];
+      var LEAD_STATUSES = ['new', 'contacted', 'qualified', 'won', 'lost'];
+
+      async function loadStats() {
+        try {
+          var s = await api('/stats');
+          $('stats').innerHTML =
+            stat(s.conversations, 'Conversations') +
+            stat(s.leads != null ? s.leads : 0, 'Leads') +
+            stat(s.orders, 'Orders') +
+            stat((s.newLeads || 0) + (s.newOrders || 0), 'New / unactioned');
+        } catch (e) {}
+      }
+      function stat(n, label) {
+        return '<div class="stat"><b>' + n + '</b><span>' + label + '</span></div>';
+      }
+
+      async function loadOrders() {
+        var data = await api('/orders');
+        if (!data.orders.length) {
+          $('view').innerHTML = '<div class="empty">No orders yet.</div>';
+          return;
+        }
+        var rows = data.orders.map(function (o) {
+          var sel = '<select data-id="' + o._id + '">' +
+            STATUSES.map(function (s) {
+              return '<option ' + (s === o.status ? 'selected' : '') + '>' + s + '</option>';
+            }).join('') + '</select>';
+          return (
+            '<tr>' +
+            '<td>' + fmtDate(o.createdAt) + '</td>' +
+            '<td><b>' + esc(o.customerName || '—') + '</b>' +
+              (o.company ? '<br><span class="muted">' + esc(o.company) + '</span>' : '') +
+              (o.phone ? '<br><span class="muted">' + esc(o.phone) + '</span>' : '') +
+              (o.email ? '<br><span class="muted">' + esc(o.email) + '</span>' : '') + '</td>' +
+            '<td>' + esc(o.boxType || '—') +
+              (o.style ? '<br><span class="muted">' + esc(o.style) + '</span>' : '') +
+              (o.dimensions ? '<br><span class="muted">' + esc(o.dimensions) + '</span>' : '') +
+              (o.material ? '<br><span class="muted">' + esc(o.material) + '</span>' : '') +
+              (o.artworkStatus ? '<br><span class="muted">Artwork: ' + esc(o.artworkStatus) + '</span>' : '') + '</td>' +
+            '<td>' + esc(o.quantity != null ? o.quantity : '—') + '</td>' +
+            '<td>' + esc(o.city || '—') + '</td>' +
+            '<td>' + sel + '</td>' +
+            '<td><button class="link" data-conv="' + esc(o.conversationPublicId) + '">chat</button></td>' +
+            '</tr>'
+          );
+        });
+        $('view').innerHTML =
+          '<table><thead><tr><th>Date</th><th>Customer</th><th>Box</th><th>Qty</th><th>City</th><th>Status</th><th></th></tr></thead><tbody>' +
+          rows.join('') + '</tbody></table>';
+
+        $('view').querySelectorAll('select').forEach(function (sel) {
+          sel.addEventListener('change', function () {
+            api('/orders/' + sel.getAttribute('data-id'), {
+              method: 'PATCH',
+              body: JSON.stringify({ status: sel.value }),
+            }).then(loadStats);
+          });
+        });
+        bindConvLinks();
+      }
+
+      async function loadLeads() {
+        var data = await api('/leads');
+        if (!data.leads.length) {
+          $('view').innerHTML = '<div class="empty">No leads yet.</div>';
+          return;
+        }
+        var rows = data.leads.map(function (l) {
+          var sel = '<select data-id="' + l._id + '">' +
+            LEAD_STATUSES.map(function (s) {
+              return '<option ' + (s === l.status ? 'selected' : '') + '>' + s + '</option>';
+            }).join('') + '</select>';
+          return (
+            '<tr>' +
+            '<td>' + fmtDate(l.createdAt) + '</td>' +
+            '<td><b>' + esc(l.name || '—') + '</b></td>' +
+            '<td>' + (l.email ? esc(l.email) : '<span class="muted">—</span>') +
+              (l.phone ? '<br><span class="muted">' + esc(l.phone) + '</span>' : '') + '</td>' +
+            '<td>' + (l.message ? esc(l.message) : '<span class="muted">—</span>') + '</td>' +
+            '<td><span class="muted">' + (l.source === 'prechat' ? 'pre-chat form' : 'manual') + '</span></td>' +
+            '<td>' + sel + '</td>' +
+            '<td>' + (l.conversationPublicId
+              ? '<button class="link" data-conv="' + esc(l.conversationPublicId) + '">chat</button>'
+              : '<span class="muted">form only</span>') + '</td>' +
+            '</tr>'
+          );
+        });
+        $('view').innerHTML =
+          '<table><thead><tr><th>Date</th><th>Name</th><th>Contact</th><th>Message</th><th>Source</th><th>Status</th><th></th></tr></thead><tbody>' +
+          rows.join('') + '</tbody></table>';
+
+        $('view').querySelectorAll('select').forEach(function (sel) {
+          sel.addEventListener('change', function () {
+            api('/leads/' + sel.getAttribute('data-id'), {
+              method: 'PATCH',
+              body: JSON.stringify({ status: sel.value }),
+            }).then(loadStats);
+          });
+        });
+        bindConvLinks();
+      }
+
+      async function loadConversations() {
+        var data = await api('/conversations');
+        if (!data.conversations.length) {
+          $('view').innerHTML = '<div class="empty">No conversations yet.</div>';
+          return;
+        }
+        var rows = data.conversations.map(function (c) {
+          return (
+            '<tr>' +
+            '<td>' + fmtDate(c.lastActivityAt) + '</td>' +
+            '<td>' + (c.visitorName || c.visitorEmail
+              ? '<b>' + esc(c.visitorName || c.visitorEmail) + '</b>'
+              : '<span class="muted">anonymous</span>') + '</td>' +
+            '<td>' + esc(c.preview) + '…</td>' +
+            '<td>' + c.messageCount + '</td>' +
+            '<td>' + (c.hasOrder ? '✅' : '') + '</td>' +
+            '<td class="muted">' + esc(c.siteOrigin || '—') + '</td>' +
+            '<td><button class="link" data-conv="' + esc(c.publicId) + '">open</button></td>' +
+            '</tr>'
+          );
+        });
+        $('view').innerHTML =
+          '<table><thead><tr><th>Last activity</th><th>Visitor</th><th>Preview</th><th>Msgs</th><th>Order</th><th>Site</th><th></th></tr></thead><tbody>' +
+          rows.join('') + '</tbody></table>';
+        bindConvLinks();
+      }
+
+      function bindConvLinks() {
+        $('view').querySelectorAll('[data-conv]').forEach(function (b) {
+          b.addEventListener('click', function () { openConversation(b.getAttribute('data-conv')); });
+        });
+      }
+
+      async function openConversation(publicId) {
+        var data = await api('/conversations/' + publicId);
+        var c = data.conversation;
+        var html = '';
+        var v = c.visitor || {};
+        if (v.name || v.email || v.phone) {
+          html +=
+            '<div class="ordercard" style="background:#fefce8;border-color:#fde68a"><dt style="color:#a16207">Visitor</dt>' +
+            [['Name', v.name], ['Email', v.email], ['Phone', v.phone]]
+              .filter(function (r) { return r[1] != null && r[1] !== ''; })
+              .map(function (r) { return '<div><b>' + r[0] + ':</b> ' + esc(r[1]) + '</div>'; })
+              .join('') +
+            '</div>';
+        }
+        (data.orders || []).forEach(function (o) {
+          html +=
+            '<div class="ordercard"><dt>Order</dt>' +
+            [['Box', o.boxType], ['Style', o.style], ['Dimensions', o.dimensions], ['Qty', o.quantity],
+             ['Product inside', o.productInside], ['Material', o.material], ['Printing', o.printing],
+             ['Base color', o.baseColor], ['Finish', o.finish], ['Inserts', o.inserts],
+             ['Artwork', o.artworkStatus], ['Sample', o.sampleRequested ? 'requested' : null],
+             ['Name', o.customerName], ['Company', o.company], ['Phone', o.phone], ['Email', o.email],
+             ['City', o.city], ['Page', o.pageUrl], ['Notes', o.notes]]
+              .filter(function (r) { return r[1] != null && r[1] !== ''; })
+              .map(function (r) { return '<div><b>' + r[0] + ':</b> ' + esc(r[1]) + '</div>'; })
+              .join('') +
+            '</div>';
+        });
+        (data.leads || []).forEach(function (l) {
+          html +=
+            '<div class="ordercard" style="background:#eff6ff;border-color:#bfdbfe"><dt style="color:#1d4ed8">Callback request</dt>' +
+            [['Name', l.name], ['Email', l.email], ['Phone', l.phone], ['Message', l.message], ['Status', l.status]]
+              .filter(function (r) { return r[1] != null && r[1] !== ''; })
+              .map(function (r) { return '<div><b>' + r[0] + ':</b> ' + esc(r[1]) + '</div>'; })
+              .join('') +
+            '</div>';
+        });
+        html += c.messages.map(function (m) {
+          return '<div class="bubble ' + m.role + '">' + esc(m.content) + '</div>';
+        }).join('');
+        $('mTitle').textContent = 'Conversation · ' + publicId;
+        $('mBody').innerHTML = html;
+        $('overlay').classList.add('show');
+      }
+
+      function render() {
+        document.querySelectorAll('.tabs button').forEach(function (b) {
+          b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+        });
+        $('view').innerHTML = '<div class="empty">Loading…</div>';
+        var loader = tab === 'orders' ? loadOrders : tab === 'leads' ? loadLeads : loadConversations;
+        loader().catch(function (e) {
+          $('view').innerHTML = '<div class="empty">' + esc(e.message) + '</div>';
+        });
+      }
+
+      document.querySelectorAll('.tabs button').forEach(function (b) {
+        b.addEventListener('click', function () { tab = b.getAttribute('data-tab'); render(); });
+      });
+      $('refresh').addEventListener('click', function () { loadStats(); render(); });
+      $('logout').addEventListener('click', logout);
+      $('mClose').addEventListener('click', function () { $('overlay').classList.remove('show'); });
+      $('overlay').addEventListener('click', function (e) { if (e.target === $('overlay')) $('overlay').classList.remove('show'); });
+
+      async function tryLogin(t) {
+        token = t;
+        try {
+          await api('/stats');
+          localStorage.setItem(TOKEN_KEY, token);
+          $('login').hidden = true;
+          $('app').hidden = false;
+          loadStats();
+          render();
+        } catch (e) {
+          token = '';
+          $('loginErr').textContent = 'Invalid token.';
+          $('loginErr').hidden = false;
+        }
+      }
+
+      $('loginBtn').addEventListener('click', function () { tryLogin($('token').value.trim()); });
+      $('token').addEventListener('keydown', function (e) { if (e.key === 'Enter') tryLogin($('token').value.trim()); });
+
+      if (token) tryLogin(token);
+    </script>
+  </body>
+</html>
