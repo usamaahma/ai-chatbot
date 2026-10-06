@@ -16,7 +16,7 @@ Visitor's website  ──<script src=".../widget.js">──►  floating chat bu
                                         └─►  /admin dashboard  (you)
 ```
 
-- **Avatar:** an AI-generated face of a man who doesn't exist (`public/avatar-ai.jpg`, from this-person-does-not-exist.com) that **lip-syncs to the voice**: `public/talking-head.js` draws it on a canvas and opens and closes the mouth letter by letter as the words are spoken (re-synced on each word). The voice prefers a male browser voice (e.g. "Google UK English Male", "Microsoft Guy", "Daniel"), falling back to a lowered pitch. If you replace the photo, re-measure the mouth coordinates in the `FACE` block at the top of `talking-head.js`.
+- **Avatar:** an AI-generated face of a man who doesn't exist (`public/avatar-csr.jpg`) that **lip-syncs to the voice**: `public/talking-head.js` draws it on a canvas and opens and closes the mouth letter by letter as the words are spoken (re-synced on each word). The voice prefers a male browser voice (e.g. "Google UK English Male", "Microsoft Guy", "Daniel"), falling back to a lowered pitch. If you replace the photo, re-measure the mouth coordinates in the `FACE` block at the top of `talking-head.js`.
 - **Voice:** browser Web Speech API — speech‑to‑text + text‑to‑speech, free, in the visitor's browser. Two modes: **push‑to‑talk** (mic button) and **hands‑free call mode** (phone button — it listens, replies, and auto‑listens again like ChatGPT voice; tap the avatar to interrupt). Best support in Chrome/Edge; degrades to text elsewhere.
 - **AI:** Google Gemini (`gemini-flash-lite-latest` + fallback chain) via `@google/genai` — free API key, no credit card. Persona: a named agent (`AGENT_NAME`, default "Zack") at Sire Printing.
 - **Pre-chat gate:** before a *new* conversation's first message, the widget asks for name (optional), email (**required**), phone (optional) via `POST /api/identify`. Returning visitors (existing conversation in `localStorage`) skip it. Visitors can also tap "Skip, just start chatting."
@@ -59,13 +59,11 @@ packaging-chatbot/
         ├── widget.js            # the embeddable loader (Shadow DOM, no deps)
         ├── chat.html/.css/.js   # the avatar chat UI (loaded in the iframe)
         ├── talking-head.js      # lip-syncs the avatar photo to the speech
-        ├── avatar-ai.jpg        # the agent's photo (AI-generated face)
-        ├── avatar-zack.jpg      # previous real photo (unused, kept as a backup)
+        ├── avatar-csr.jpg       # the agent's photo (AI-generated face)
         ├── admin.html           # the dashboard (self-contained)
         └── demo.html            # a demo "customer site" for local testing
 ```
 
-> A `frontend/` folder from the earlier version is no longer used — delete it.
 > (Stop any `npm run dev` running inside it first, then remove the folder.)
 
 ---
