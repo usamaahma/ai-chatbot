@@ -11,7 +11,7 @@ const { clientIp } = require('../util');
 const router = express.Router();
 
 const MAX_MESSAGE_CHARS = 2000;
-const MAX_HISTORY_MESSAGES = 40; // hard stop so one visitor can't run up the bill
+const MAX_HISTORY_MESSAGES = 120; // ~60 back-and-forths; hard stop so one visitor can't run up the bill
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Abuse protection: this endpoint is public and costs money per call.
@@ -58,7 +58,7 @@ router.post('/chat', chatLimiter, async (req, res) => {
       return res.status(429).json({
         conversationId: convo.publicId,
         reply:
-          'This chat has gotten long. A team member will follow up with you - or start a new chat any time.',
+          'We have covered a lot in this chat, so I have passed everything to our team and they will follow up with you by email. You can also refresh the page to start a new chat any time.',
       });
     }
 

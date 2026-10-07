@@ -278,11 +278,10 @@
   var finalConfidence = 0;
   var MIN_CONFIDENCE = 0.4;
   var callRetry = 0;
-  // In a call, end the visitor's turn early once the browser has confirmed
-  // (finalised) their words and they've gone quiet. Before that, allow a
-  // longer pause: cutting in on unconfirmed guesses sent half-heard sentences.
-  var CALL_SILENCE_AFTER_FINAL_MS = 700;
-  var CALL_SILENCE_MAX_MS = 2000;
+  // The visitor's turn ends only after this much silence. Recognition runs in
+  // continuous mode, so short pauses mid-sentence (to think or breathe) no
+  // longer cut them off and send half a sentence.
+  var TURN_SILENCE_MS = 1600;
   var silenceTimer = 0;
   // Always listen in English: following the browser's UI language (e.g. Urdu)
   // turned spoken English into nonsense. ?voiceLang=en-IN etc. overrides it.
@@ -294,7 +293,7 @@
     recognition.lang = VOICE_LANG;
     recognition.maxAlternatives = 1;
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true; // we end the turn ourselves after TURN_SILENCE_MS
 
     recognition.onstart = function () {
       console.log('[voice] listening, lang', recognition.lang);
@@ -315,22 +314,24 @@
     };
 
     recognition.onresult = function (e) {
+      // Continuous mode keeps every phrase of the turn in e.results; rebuild
+      // the whole transcript each time so nothing is duplicated or dropped.
       var interim = '';
-      for (var i = e.resultIndex; i < e.results.length; i++) {
+      finalTranscript = '';
+      finalConfidence = 0;
+      for (var i = 0; i < e.results.length; i++) {
         var t = e.results[i][0].transcript;
         if (e.results[i].isFinal) {
-          finalTranscript += t;
+          finalTranscript += (finalTranscript ? ' ' : '') + t.trim();
           var c = e.results[i][0].confidence;
           if (c > 0) finalConfidence = finalConfidence ? Math.min(finalConfidence, c) : c;
         } else interim += t;
       }
-      if (callMode) {
-        clearTimeout(silenceTimer);
-        var wait = finalTranscript && !interim ? CALL_SILENCE_AFTER_FINAL_MS : CALL_SILENCE_MAX_MS;
-        silenceTimer = setTimeout(function () {
-          if (callMode && recActive) { try { recognition.stop(); } catch (x) {} } // stop() still delivers the final result
-        }, wait);
-      }
+      // Still talking: push the end of the turn back.
+      clearTimeout(silenceTimer);
+      silenceTimer = setTimeout(function () {
+        if (recActive) { try { recognition.stop(); } catch (x) {} } // stop() still delivers the final result
+      }, TURN_SILENCE_MS);
       var shown = (finalTranscript + ' ' + interim).trim();
       console.log('[voice] heard:', shown, finalTranscript && !interim ? '(final, confidence ' + finalConfidence.toFixed(2) + ')' : '(guess)');
       if (callMode) {
@@ -609,6 +610,9 @@
         }),
       });
       var data = await res.json();
+      // The server can refuse with a message for the visitor (e.g. the chat
+      // length limit) - show/speak it as Zack's reply rather than an error.
+      if (!res.ok && data.reply) return data.reply;
       if (!res.ok) {
         showError(data.error || 'Something went wrong. Please try again.');
         return null;
