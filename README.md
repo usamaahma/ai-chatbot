@@ -18,7 +18,7 @@ Visitor's website  ──<script src=".../widget.js">──►  floating chat bu
 
 - **Avatar:** an AI-generated face of a man who doesn't exist (`public/avatar-csr.jpg`) that **lip-syncs to the voice**: `public/talking-head.js` draws it on a canvas and opens and closes the mouth letter by letter as the words are spoken (re-synced on each word). The voice prefers a male browser voice (e.g. "Google UK English Male", "Microsoft Guy", "Daniel"), falling back to a lowered pitch. If you replace the photo, re-measure the mouth coordinates in the `FACE` block at the top of `talking-head.js`.
 - **Voice:** browser Web Speech API — speech‑to‑text + text‑to‑speech, free, in the visitor's browser. Two modes: **push‑to‑talk** (mic button) and **hands‑free call mode** (phone button — it listens, replies, and auto‑listens again like ChatGPT voice; tap the avatar to interrupt). Best support in Chrome/Edge; degrades to text elsewhere.
-- **AI:** Google Gemini (`gemini-flash-lite-latest` + fallback chain) via `@google/genai` — free API key, no credit card. Persona: a named agent (`AGENT_NAME`, default "Zack") at Sire Printing.
+- **AI:** Google Gemini (`gemini-flash-lite-latest` + fallback chain) via `@google/genai` — free API key, no credit card. Persona: a named agent (`AGENT_NAME`, default "Sire") at Sire Printing.
 - **Pre-chat gate:** before a *new* conversation's first message, the widget asks for name (optional), email (**required**), phone (optional) via `POST /api/identify`. Returning visitors (existing conversation in `localStorage`) skip it. Visitors can also tap "Skip, just start chatting."
 - **Orders & leads:** Gemini calls `submit_quote_request` when a visitor agrees to receive an emailed price quote, or `show_lead_form` to pop a short **callback form** (name, email, phone) mid-conversation. All three capture paths (pre-chat gate, callback form, header button) land in MongoDB and show in the dashboard.
 - **Backend:** Node.js + Express + `@google/genai` + Mongoose.
@@ -44,7 +44,7 @@ packaging-chatbot/
     │   ├── app.js               # Express app: API + widget + chat UI + admin
     │   ├── db.js                # Mongoose connection (shared, lazy - serverless friendly)
     │   ├── util.js              # shared helpers (clientIp)
-    │   ├── systemPrompt.js      # Zack's sales playbook (from real chats) + submit_quote_request / show_lead_form schemas
+    │   ├── systemPrompt.js      # the agent's (Sire's) sales playbook (from real chats) + submit_quote_request / show_lead_form schemas
     │   ├── llm.js               # Gemini call + function-calling loop
     │   ├── models/
     │   │   ├── Conversation.js  # includes visitor.{name,email,phone} once identified

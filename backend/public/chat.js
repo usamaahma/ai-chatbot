@@ -6,7 +6,7 @@
   var TITLE = params.get('title') || 'Sire Printing';
   var ACCENT = params.get('accent') || '#4f46e5';
   var PARENT_ORIGIN = params.get('parentOrigin') || '';
-  var AGENT_NAME = params.get('agent') || 'Zack';
+  var AGENT_NAME = params.get('agent') || 'Sire';
   var PAGE_URL = params.get('pageUrl') || '';
 
   // "/satin-lined-boxes" -> "satin lined boxes"; mirrors productFromUrl() on the server.
@@ -21,7 +21,7 @@
 
   // Greeting as separate lines -> separate bubbles, like a live rep typing.
   function greetingFor(name) {
-    return (name ? 'Hi ' + name : 'Hi there,Zack This Side') + '\nLooking for ' + PRODUCT + '?\nI am live here to assist you. Lets chat';
+    return (name ? 'Hi ' + name : 'Hi there, ' + AGENT_NAME + ' this side') + '\nLooking for ' + PRODUCT + '?\nI am live here to assist you. Lets chat';
   }
   var GREETING = params.get('greeting') || greetingFor('');
 
@@ -223,8 +223,15 @@
     });
   }
 
+  // Abbreviations like SEO, UV or CMYK were read as words ("seo"); speak
+  // them letter by letter instead. Only affects the voice, not the chat text.
+  function spellAcronyms(t) {
+    return String(t).replace(/\b[A-Z]{2,5}\b/g, function (m) { return m.split('').join(' '); });
+  }
+
   function speakNow(text, done) {
     synth.cancel();
+    text = spellAcronyms(text);
     // Speak a few sentences per utterance: each utterance on a network voice
     // (Chrome's Google voices) costs a round trip, so one per sentence left
     // audible gaps. Stay under ~160 chars - Chrome cuts off very long ones.
@@ -281,7 +288,7 @@
   // The visitor's turn ends only after this much silence. Recognition runs in
   // continuous mode, so short pauses mid-sentence (to think or breathe) no
   // longer cut them off and send half a sentence.
-  var TURN_SILENCE_MS = 1600;
+  var TURN_SILENCE_MS = 1000;
   var silenceTimer = 0;
   // Always listen in English: following the browser's UI language (e.g. Urdu)
   // turned spoken English into nonsense. ?voiceLang=en-IN etc. overrides it.
@@ -611,7 +618,7 @@
       });
       var data = await res.json();
       // The server can refuse with a message for the visitor (e.g. the chat
-      // length limit) - show/speak it as Zack's reply rather than an error.
+      // length limit) - show/speak it as the agent's reply rather than an error.
       if (!res.ok && data.reply) return data.reply;
       if (!res.ok) {
         showError(data.error || 'Something went wrong. Please try again.');
@@ -671,7 +678,7 @@
     if (e.data && e.data.type === 'sireprinting:opened') maybeSpeakGreeting();
   });
 
-  // No form up front: Zack greets the visitor and asks for their details in the chat.
+  // No form up front: the agent greets the visitor and asks for their details in the chat.
   startChat();
 
   autosize();

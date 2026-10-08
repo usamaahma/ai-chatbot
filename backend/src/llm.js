@@ -26,6 +26,35 @@ const PRIMARY_TIMEOUT_MS = 6000;
 const FALLBACK_TIMEOUT_MS = 12000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Keep only contact details the visitor actually typed (or said) in the chat.
+// The model sometimes "saves" details after a visitor merely says "I gave it",
+// or fills in a guessed value - never store anything that isn't in their words.
+function verifiedContact(args, history) {
+  const said = history.filter((m) => m.role === 'user').map((m) => m.content).join('\n').toLowerCase();
+  const saidDigits = said.replace(/\D/g, '');
+  const out = {};
+  const str = (v) => (typeof v === 'string' ? v.trim() : '');
+
+  // Voice typing writes emails as "ali khan at gmail dot com": compare against
+  // a version with spoken "at"/"dot" turned into symbols and spaces removed.
+  const saidCompact = said
+    .replace(/\s+at\s+/g, '@')
+    .replace(/\s+dot\s+/g, '.')
+    .replace(/\s+/g, '');
+  const email = str(args.email).toLowerCase();
+  if (email && EMAIL_RE.test(email) && (said.includes(email) || saidCompact.includes(email))) out.email = email;
+
+  const phoneDigits = str(args.phone).replace(/\D/g, '');
+  if (phoneDigits.length >= 7 && saidDigits.includes(phoneDigits)) out.phone = str(args.phone);
+
+  for (const key of ['name', 'customerName', 'company']) {
+    const v = str(args[key]);
+    if (v && said.includes(v.toLowerCase())) out[key] = v;
+  }
+  return out;
+}
 
 function toContents(history) {
   return history.map((m) => ({
@@ -142,7 +171,26 @@ async function runAssistantTurn(history, context) {
     for (const call of calls) {
       const name = call.name || '';
       if (name === 'submit_quote_request' || name.endsWith(':submit_quote_request')) {
-        capturedOrder = call.args || {};
+        const args = { ...(call.args || {}) };
+        const typed = verifiedContact(args, history);
+        const email = typed.email || context?.visitor?.email || null;
+        if (!email) {
+          responseParts.push({
+            functionResponse: {
+              name: call.name,
+              response: {
+                error:
+                  'NOT SENT: the visitor has not typed an email address in this chat yet (saying "I gave it" or "given" is not an email). Do not thank them or say the quote is on its way. Politely say you did not receive it and ask them to type their email address.',
+              },
+            },
+          });
+          continue;
+        }
+        args.email = email;
+        args.customerName = typed.customerName || typed.name || null;
+        args.phone = typed.phone || null;
+        args.company = typed.company || null;
+        capturedOrder = args;
         responseParts.push({
           functionResponse: {
             name: call.name,
@@ -150,11 +198,24 @@ async function runAssistantTurn(history, context) {
           },
         });
       } else if (name === 'save_contact_details' || name.endsWith(':save_contact_details')) {
-        capturedContact = { ...(capturedContact || {}), ...(call.args || {}) };
+        const typed = verifiedContact(call.args || {}, history);
+        if (!Object.keys(typed).length) {
+          responseParts.push({
+            functionResponse: {
+              name: call.name,
+              response: {
+                error:
+                  'NOTHING SAVED: no name, phone number or email appears in what the visitor actually wrote. Do not thank them for their details. Politely say you did not receive them and ask them to type them, at least their email for the quote.',
+              },
+            },
+          });
+          continue;
+        }
+        capturedContact = { ...(capturedContact || {}), ...typed };
         responseParts.push({
           functionResponse: {
             name: call.name,
-            response: { result: 'Contact details saved for the sales team.' },
+            response: { result: `Saved for the sales team: ${Object.keys(typed).join(', ')}.` },
           },
         });
       } else if (name === 'show_lead_form' || name.endsWith(':show_lead_form')) {
@@ -174,8 +235,13 @@ async function runAssistantTurn(history, context) {
     contents.push({ role: 'user', parts: responseParts });
   }
 
+  // Tool rounds exhausted without a text reply: don't claim anything was saved.
   return {
-    reply: 'Thanks! Your details are recorded and a team member will contact you shortly.',
+    reply: capturedOrder
+      ? 'Thank you, I will email you the official price quote shortly\nIs there anything else I can help you with?'
+      : capturedContact
+        ? 'Thank you for sharing the information with me.'
+        : 'Sorry, I did not receive your email address\nCould you please type it here so I can send you the price quote?',
     order: capturedOrder,
     contact: capturedContact,
     showLeadForm,
