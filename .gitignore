@@ -6,3 +6,4 @@ node_modules/
 frontend/
 _frontend_old_delete_me/
 .vercel
+backups/

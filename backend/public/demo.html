@@ -26,19 +26,30 @@
     <main>
       <h2>How the embed works</h2>
       <p>On a real site you paste this once, just before <code>&lt;/body&gt;</code>:</p>
-      <pre>&lt;script src="https://chat.yourdomain.com/widget.js"
-        data-sireprinting-id="default"
-        data-title="Sire Printing"
-        data-accent="#4f46e5"
-        data-position="br"
-        async&gt;&lt;/script&gt;</pre>
+      <pre>&lt;script src="https://bot.sireprinting.co.uk/widget.js" data-id="default" async&gt;&lt;/script&gt;</pre>
+      <p>
+        Each registered company gets its own <code>data-id</code> from the admin panel.
+        To test one here, open <code>/demo?id=soapboxeswholesale</code>.
+      </p>
       <p>
         You can also control it from your own buttons:
         <code>SirePrinting.open()</code>, <code>SirePrinting.close()</code>, <code>SirePrinting.toggle()</code>.
       </p>
     </main>
 
-    <!-- The widget, loaded from this same server -->
-    <script src="/widget.js" data-sireprinting-id="demo" data-title="Sire Printing" data-accent="#4f46e5" async></script>
+    <!-- The widget, loaded from this same server. ?id=<siteId> tests another company's chatbot. -->
+    <script>
+      (function () {
+        var id = new URLSearchParams(location.search).get('id') || 'default';
+        var s = document.createElement('script');
+        s.src = '/widget.js';
+        s.async = true;
+        s.setAttribute('data-id', id);
+        document.body.appendChild(s);
+        var h = document.querySelector('.hero h1');
+        fetch('/api/site/' + encodeURIComponent(id)).then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (c) { if (c) { h.textContent = c.companyName; document.title = c.companyName + ' chatbot – demo page'; } });
+      })();
+    </script>
   </body>
 </html>

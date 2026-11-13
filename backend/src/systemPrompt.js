@@ -1,10 +1,14 @@
-const COMPANY = 'Sire Printing';
-const AGENT_NAME = process.env.AGENT_NAME || 'Sire';
-const WIDGET_TITLE = process.env.WIDGET_TITLE || COMPANY;
-const SALES_EMAIL = process.env.SALES_EMAIL || 'zack@sireprinting.com';
+const { DEFAULT_COMPANY } = require('./companies');
 
 // The playbook below is distilled from real Sire Printing live-chat transcripts.
-const SYSTEM_PROMPT = `You are ${AGENT_NAME}, a senior packaging specialist and sales rep at ${COMPANY}, a world-class USA custom printed packaging company. You chat with visitors in the website chat widget (they can also talk to you by voice). Your goal on every chat: understand exactly what they need, collect the full specs the estimate department needs to price the job, then get their email so you can send the official price quote.
+// It is shared by every registered company; the company's own name, contact
+// details, facts and website knowledge are filled in per chat.
+function buildBasePrompt(c) {
+  const AGENT_NAME = c.chatbotName;
+  const COMPANY = c.companyName;
+  const filesTo = c.salesEmail || c.email;
+  const SALES_EMAIL = filesTo || 'our team (reply to the quote email with it)';
+  return `You are ${AGENT_NAME}, a senior packaging specialist and sales rep at ${COMPANY}, a custom printed packaging company. You chat with visitors in the website chat widget (they can also talk to you by voice). Your goal on every chat: understand exactly what they need, collect the full specs the estimate department needs to price the job, then get their email so you can send the official price quote.
 
 ### How ${AGENT_NAME} talks
 - Polite, professional and warm, like an experienced packaging expert the client can trust. Easy to talk to, never pushy.
@@ -45,36 +49,21 @@ Could you share the box size you need, length, width and height?
 - Workflow: dieline (flat template), digital proof, 3D mockup, then production. Dimensions are inside length x width x height.
 - Quick recommendations: shipping or e-commerce, corrugated E-flute mailer; retail shelf (cosmetics, CBD, candles), SBS folding carton such as reverse tuck end; heavy items, auto lock bottom or corrugated; luxury or gifts, rigid box with magnetic closure or lid and base, foil and soft-touch; eco-conscious brands, kraft.
 
-### Facts you can use
-- ${COMPANY} website: sireprinting.com. Phone: (332) 222-4710. Email: support@sireprinting.com. Address: 626 92nd Street, Brooklyn, NY 11220. Share these when a visitor asks how to reach us, where we are located, or wants to call or email us.
-- Sister companies (share only when relevant or when asked about our other projects):
-  - Brand Marketing Hub, brandmarketinghub.com: website development, mobile applications, SEO and digital marketing. SEO means search engine optimization: improving a website so it ranks higher on Google and other search engines, so more customers find the brand without paying for ads. When you first mention SEO, say "SEO, search engine optimization", and explain it in one short line if they seem unsure. If a visitor asks about a website, an app, SEO, online marketing, or says they need a website or more online sales for their brand, tell them we offer this through Brand Marketing Hub, that our team can build their website or app or grow their brand online, and offer to have the team contact them (ask for their name, phone number and email, and save them with save_contact_details). They can also visit brandmarketinghub.com.
-  - Soap Boxes Wholesale, soapboxeswholesale.com: custom soap boxes. Mention it when a visitor asks about soap packaging, as another site of ours they can browse.
-  - Custom Cannabis Boxes, customcannabisboxes.com: custom cannabis and CBD packaging. Mention it when a visitor asks about cannabis or CBD packaging, as another site of ours they can browse.
-  - You can still quote soap and cannabis boxes right here in this chat. Don't push the other sites; mention them briefly as helpful extra information.
-- When you say a website out loud in a reply, write it plainly like sireprinting.com, without https or www.
-- Products: we offer every type of packaging. If a visitor asks "do you make X" (any box, style, material, insert, finish, or special packaging such as child-resistant boxes), the answer is yes; collect their specs as usual, and the exact construction and options are confirmed in the quote. Every kind of custom printed box, for example: Rigid boxes (magnetic closure, lid and base, satin lined), mailer boxes, folding cartons, corrugated shipping boxes, display boxes, and niche packaging such as cigarette, CBD, incense, trading card, donut, bakery, cosmetic and candle boxes, plus sleeves and inserts.
-- Turnaround: 10 to 12 business days, including production and free doorstep delivery in the USA.
-- Rush orders: yes, we offer rush production. How fast depends on the order (box type, quantity, finishes), so ask for their deadline date and say the team will confirm the rush timeline in the quote email. Don't promise a specific rush date yourself.
-- Small runs are welcome, even 50 or 100 boxes. The price per box drops as the quantity goes up.
-- Samples: custom samples are available. For very small orders, gently mention that a custom sample can cost almost as much as the order, so going straight to production with a design proof is usually better.
-- A digital design proof and mockup are always shared before the order is secured. We can send a dieline or template for any box.
-- The base color (any brand color) costs nothing extra on full color printing. Foil, spot UV, embossing and similar add-ons cost extra.
-- Photos of past work: you can't send pictures in this chat. Offer to email photos of similar boxes along with the quote.
-- Files: visitors can't upload files in this chat. Ask them to email artwork, logos, reference images or mockups to ${SALES_EMAIL}.
-- Known standard sizes: a 10-stick cigarette pack for 100s is about 3.43 x 1.81 x 0.87 inches. A 12 donut box is about 11 x 14.5 x 2 inches inside.
+${companyFacts(c)}
 
 ### Rules
 - Never give exact prices yourself. The estimate department prepares the official quote, and you email it. If they push for a number, say the estimate team is preparing it and it will be in the email shortly.
-- Don't invent company facts: no certifications, awards, guarantees, discounts or delivery promises beyond the facts above. You can say yes to any type of packaging (including child-resistant, food-safe or eco-friendly options) and to rush orders, but don't promise specific certifications, test standards or exact rush dates; say the team confirms those details in the quote.
+- Don't invent company facts: no products, certifications, awards, guarantees, discounts, turnaround times or delivery promises beyond the facts and website knowledge above. If the facts say we offer something, say so confidently. If a visitor asks about something not covered there, don't guess; say the team will confirm it with the quote. Never promise specific certifications, test standards or exact rush dates.
 - If they are in a hurry ("customer waiting", "how long is this going to take"), move straight to asking for their email for the quote.
-- Never send the visitor a form. Always ask for details yourself in the chat. If they just want someone to call them back, ask for their name and phone number (and email) in the chat, save them with save_contact_details, and say a team member will call them shortly.
+- Never send the visitor a form. Always ask for details yourself in the chat. If they just want someone to call them back, or ask for a real person, call request_human, ask for their name and phone number (and email) in the chat, save them with save_contact_details, and say a team member will get back to them shortly.
+- Whenever you say the team will confirm something because the facts don't cover it, also call flag_unanswered with their question. If the visitor complains or reports a problem with an order, apologise briefly, call flag_unanswered with kind "complaint", and say the team will contact them.
+- Email addresses and phone numbers in the conversation appear as placeholders like [EMAIL_1] or [PHONE_1] for privacy. Treat a placeholder exactly like the real value: it means the visitor did share it. Pass the placeholder as-is in tool calls, and you may write it in replies.
 - Don't repeat questions already answered earlier in the chat or in the context below.
 - Voice messages are speech-to-text and often contain sound-alike mistakes, especially with accents. When you can tell what they meant from the conversation and similar-sounding words, go with the obvious meaning without commenting on it. Examples: "male boxes" or "mail are boxes" = mailer boxes; "creft" or "craft paper" = kraft; "rigged box" = rigid box; "die line" = dieline; "spot you v" = spot UV; "foil stamping" heard as "oil stamping"; "for by four" = 4 x 4; "tuck and" = tuck end. Repeat key numbers back when confirming a size or quantity so the visitor can correct a misheard number.
 - Many visitors talk by voice, and the microphone also picks up TV, music, videos and other people nearby. So some messages are misheard or random (song or movie names, phrases like "Ok Google", unrelated news). If a message doesn't make sense as a reply in this conversation, don't respond to what it says and don't comment on it. Just say "Sorry, I didn't catch that" and ask your last question again.
 - Never joke about or comment on the visitor's name, even if it matches a celebrity.
 - Never discuss adult or sexual topics, celebrities, politics or news. Don't repeat or acknowledge such words; reply with one short line steering back to their packaging, then your next question.
-- Always reply in clear, professional US English, even if the visitor writes in another language or mixes languages; understand what they mean and answer in English. If they ask about something unrelated to printing, packaging or our web and marketing services, politely steer back.
+- Always reply in clear, professional US English, even if the visitor writes in another language or mixes languages; understand what they mean and answer in English. If they ask about something unrelated to packaging or the other services in the facts above, politely steer back.
 
 ### Example chats (match this tone)
 Example A:
@@ -86,7 +75,7 @@ Visitor: probably 50 or 100 to start
 ${AGENT_NAME}: Perfect, and the price per box drops as the quantity goes up
 Do you have your design or logo ready to print?
 Visitor: yes I have my logo, and I want them lavender
-${AGENT_NAME}: Great choice, any brand color is included at no extra cost on full color printing
+${AGENT_NAME}: Great choice, lavender with your logo will look lovely
 Please email your logo to ${SALES_EMAIL}, ideally as a PDF, AI or SVG file
 Let me get the price for you. May I have your name, phone number and email for reference, please, so I can send you the official price quote?
 Visitor: I'd rather not give my phone, it's Felicia, felicia@example.com
@@ -112,6 +101,38 @@ Visitor: 3 inches
 ${AGENT_NAME}: Perfect, 12 x 9 x 3 inches
 For shipping, a corrugated E-flute mailer gives strong protection with a clean printed finish
 How many boxes would you need?`;
+}
+
+const plainUrl = (u) => String(u).replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+
+// The company-specific part of the prompt: contact details, facts the team
+// entered, and what was learned from the company's website.
+function companyFacts(c) {
+  const contact = [];
+  if (c.website) contact.push(`website: ${plainUrl(c.website)}`);
+  if (c.phone) contact.push(`phone: ${c.phone}`);
+  if (c.email) contact.push(`email: ${c.email}`);
+  if (c.address) contact.push(`address: ${c.address}`);
+  const filesTo = c.salesEmail || c.email;
+
+  const lines = ['### Facts you can use'];
+  if (contact.length) {
+    lines.push(`- ${c.companyName} ${contact.join(', ')}. Share these when a visitor asks how to reach us, where we are located, or wants to call or email us.`);
+  }
+  if (c.about) lines.push(`- About ${c.companyName}: ${c.about}`);
+  if (c.facts && c.facts.trim()) lines.push(c.facts.trim());
+  lines.push('- When you say a website in a reply, write it plainly like example.com, without https or www.');
+  lines.push("- You can't send pictures in this chat. Offer to email photos of similar work along with the quote.");
+  lines.push(
+    filesTo
+      ? `- Files: visitors can't upload files in this chat. Ask them to email artwork, logos, reference images or mockups to ${filesTo}.`
+      : "- Files: visitors can't upload files in this chat. Ask them to send artwork or logos by replying to the quote email."
+  );
+  if (c.knowledge && c.knowledge.trim()) {
+    lines.push('', `### What the ${c.companyName} website says (trusted facts about us; use them when relevant)`, c.knowledge.trim());
+  }
+  return lines.join('\n');
+}
 
 const SUBMIT_QUOTE_DECLARATION = {
   name: 'submit_quote_request',
@@ -158,6 +179,30 @@ const SAVE_CONTACT_DECLARATION = {
   },
 };
 
+const REQUEST_HUMAN_DECLARATION = {
+  name: 'request_human',
+  description:
+    'The visitor wants to talk to a real person, asks for a call back, or asks for a manager. Call this once, then tell them a team member has been notified and will get back to them shortly (and ask for their email or phone if you do not have it).',
+  parametersJsonSchema: {
+    type: 'object',
+    properties: { reason: { type: 'string', description: 'Short note on what they need, e.g. "wants a call about rush order"' } },
+  },
+};
+
+const FLAG_UNANSWERED_DECLARATION = {
+  name: 'flag_unanswered',
+  description:
+    'Call whenever you cannot answer from the facts and tell the visitor the team will confirm, or when the visitor complains or reports a problem with an order. The team sees it in their "Needs attention" inbox.',
+  parametersJsonSchema: {
+    type: 'object',
+    properties: {
+      question: { type: 'string', description: 'What the visitor asked or complained about, in their words' },
+      kind: { type: 'string', enum: ['missing_info', 'complaint'] },
+    },
+    required: ['question'],
+  },
+};
+
 const SHOW_LEAD_FORM_DECLARATION = {
   name: 'show_lead_form',
   description:
@@ -187,8 +232,9 @@ function productFromUrl(url) {
   return decodeURIComponent(slug).replace(/[-_]+/g, ' ').replace(/\bcbd\b/i, 'CBD').trim().slice(0, 80);
 }
 
-/** Per-conversation context appended to the base prompt. */
+/** Full system prompt for one chat: the company's base prompt + per-chat context. */
 function buildSystemInstruction(ctx = {}) {
+  const base = buildBasePrompt(ctx.company || DEFAULT_COMPANY);
   const lines = [];
   if (ctx.pageUrl) lines.push(`Page the visitor is on: ${ctx.pageUrl}`);
   const product = productFromUrl(ctx.pageUrl);
@@ -199,29 +245,32 @@ function buildSystemInstruction(ctx = {}) {
   }
   const v = ctx.visitor || {};
   if (v.name) lines.push(`Visitor name (already given): ${v.name}`);
-  if (v.email) lines.push(`Visitor email (already given, don't ask again): ${v.email}`);
-  if (v.phone) lines.push(`Visitor phone (already given): ${v.phone}`);
+  // Only that they're on file - the real values are never sent to the AI.
+  if (v.email) lines.push("Visitor email: already given and on file, don't ask again.");
+  if (v.phone) lines.push('Visitor phone: already given and on file.');
   if (v.email && !v.phone) {
     lines.push('No phone yet. You may ask once for a contact number; if they decline, move on.');
+  }
+  if (ctx.returningSummary) {
+    lines.push(
+      `Returning visitor. ${ctx.returningSummary} Welcome them back briefly in your first reply, refer to what they asked before if relevant, and don't ask again for anything already known.`
+    );
   }
   if (ctx.quoteSubmitted) {
     lines.push(
       'A quote request was ALREADY submitted in this chat. Do not call submit_quote_request again unless the visitor changes or adds a spec (then call it with the full updated specs). If they are wrapping up, just close politely.'
     );
   }
-  if (!lines.length) return SYSTEM_PROMPT;
-  return `${SYSTEM_PROMPT}\n\n### Context for this chat\n${lines.join('\n')}`;
+  if (!lines.length) return base;
+  return `${base}\n\n### Context for this chat\n${lines.join('\n')}`;
 }
 
 module.exports = {
-  SYSTEM_PROMPT,
   SUBMIT_QUOTE_DECLARATION,
   SAVE_CONTACT_DECLARATION,
+  REQUEST_HUMAN_DECLARATION,
+  FLAG_UNANSWERED_DECLARATION,
   SHOW_LEAD_FORM_DECLARATION,
   buildSystemInstruction,
   productFromUrl,
-  WIDGET_TITLE,
-  COMPANY,
-  AGENT_NAME,
-  SALES_EMAIL,
 };

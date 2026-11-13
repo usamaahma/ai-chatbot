@@ -3,7 +3,10 @@ const {
   buildSystemInstruction,
   SUBMIT_QUOTE_DECLARATION,
   SAVE_CONTACT_DECLARATION,
+  REQUEST_HUMAN_DECLARATION,
+  FLAG_UNANSWERED_DECLARATION,
 } = require('./systemPrompt');
+const { makeRedactor } = require('./redact');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -56,10 +59,12 @@ function verifiedContact(args, history) {
   return out;
 }
 
-function toContents(history) {
+// Emails and phone numbers are replaced with placeholders before anything is
+// sent to Gemini (see redact.js); the real values never leave our server.
+function toContents(history, redactor) {
   return history.map((m) => ({
     role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
+    parts: [{ text: redactor.redact(m.content) }],
   }));
 }
 
@@ -70,7 +75,7 @@ function baseConfig(context) {
     maxOutputTokens: MAX_OUTPUT_TOKENS,
     // The visitor is always asked for details in the chat, never sent a form,
     // so show_lead_form is intentionally not offered to the model.
-    tools: [{ functionDeclarations: [SUBMIT_QUOTE_DECLARATION, SAVE_CONTACT_DECLARATION] }],
+    tools: [{ functionDeclarations: [SUBMIT_QUOTE_DECLARATION, SAVE_CONTACT_DECLARATION, REQUEST_HUMAN_DECLARATION, FLAG_UNANSWERED_DECLARATION] }],
   };
 }
 
@@ -106,13 +111,23 @@ async function generateAcrossChain(contents, startModel, context) {
  * Run one assistant turn.
  * @param {Array<{role:'user'|'assistant', content:string}>} history
  * @param {{pageUrl?:string, visitor?:{name?:string,email?:string,phone?:string}}} [context]
- * @returns {Promise<{ reply: string, order: object|null, contact: object|null, showLeadForm: boolean }>}
+ * @returns {Promise<{ reply: string, order: object|null, contact: object|null, escalations: object[], showLeadForm: boolean }>}
  */
 async function runAssistantTurn(history, context) {
-  const contents = toContents(history);
+  const redactor = makeRedactor();
+  const contents = toContents(history, redactor);
   let capturedOrder = null;
   let capturedContact = null;
+  const escalations = []; // { reason, question, detail, priority } for the "Needs attention" inbox
   let showLeadForm = false;
+  // Every way out of this function: real emails/phones back in the reply text.
+  const done = (reply) => ({
+    reply: redactor.restore(reply),
+    order: capturedOrder,
+    contact: capturedContact,
+    escalations,
+    showLeadForm,
+  });
   let activeModel = null; // lock to one model for the whole tool loop (thought signatures are model-bound)
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -125,14 +140,14 @@ async function runAssistantTurn(history, context) {
       // instead of failing the whole turn.
       if (round > 0 && (capturedOrder || capturedContact)) {
         console.warn('Follow-up after tool call failed, using fallback reply:', err?.name || err?.status);
-        return {
-          reply: capturedOrder
+        return done(
+          capturedOrder
             ? 'Sure, I will email you the price quote and we can move further from there\nIs there anything else I can assist you with?'
-            : 'Thank you for sharing the information with me.',
-          order: capturedOrder,
-          contact: capturedContact,
-          showLeadForm,
-        };
+            : 'Thank you for sharing the information with me.'
+        );
+      }
+      if (round > 0 && escalations.length) {
+        return done('Thank you, I have passed this to our team and a team member will get back to you shortly.');
       }
       throw err;
     }
@@ -142,20 +157,14 @@ async function runAssistantTurn(history, context) {
 
     if (calls.length === 0) {
       const text = (response.text || '').trim();
-      if (text) return { reply: text, order: capturedOrder, contact: capturedContact, showLeadForm };
+      if (text) return done(text);
 
       const blocked =
         response.promptFeedback?.blockReason || response.candidates?.[0]?.finishReason;
       if (blocked && blocked !== 'STOP') {
-        return {
-          reply:
-            "Sorry, I can't help with that. If it's about your printing or an order, I'm happy to keep going.",
-          order: capturedOrder,
-          contact: capturedContact,
-          showLeadForm,
-        };
+        return done("Sorry, I can't help with that. If it's about your printing or an order, I'm happy to keep going.");
       }
-      return { reply: 'Sorry, could you say that again?', order: capturedOrder, contact: capturedContact, showLeadForm };
+      return done('Sorry, could you say that again?');
     }
 
     // Echo the model's turn back verbatim (preserves thoughtSignature on 3.x models).
@@ -170,8 +179,9 @@ async function runAssistantTurn(history, context) {
     const responseParts = [];
     for (const call of calls) {
       const name = call.name || '';
+      const realArgs = redactor.restoreDeep(call.args || {});
       if (name === 'submit_quote_request' || name.endsWith(':submit_quote_request')) {
-        const args = { ...(call.args || {}) };
+        const args = { ...realArgs };
         const typed = verifiedContact(args, history);
         const email = typed.email || context?.visitor?.email || null;
         if (!email) {
@@ -198,7 +208,7 @@ async function runAssistantTurn(history, context) {
           },
         });
       } else if (name === 'save_contact_details' || name.endsWith(':save_contact_details')) {
-        const typed = verifiedContact(call.args || {}, history);
+        const typed = verifiedContact(realArgs, history);
         if (!Object.keys(typed).length) {
           responseParts.push({
             functionResponse: {
@@ -218,6 +228,27 @@ async function runAssistantTurn(history, context) {
             response: { result: `Saved for the sales team: ${Object.keys(typed).join(', ')}.` },
           },
         });
+      } else if (name === 'request_human' || name.endsWith(':request_human')) {
+        escalations.push({ reason: 'visitor_requested_human', detail: String(realArgs.reason || '').slice(0, 500) || null, priority: 1 });
+        responseParts.push({
+          functionResponse: {
+            name: call.name,
+            response: {
+              result:
+                'The team has been notified. Tell the visitor a team member will get back to them shortly. If you do not have their email or phone number yet, ask for it so the team can reach them.',
+            },
+          },
+        });
+      } else if (name === 'flag_unanswered' || name.endsWith(':flag_unanswered')) {
+        const complaint = realArgs.kind === 'complaint';
+        escalations.push({
+          reason: complaint ? 'complaint' : 'unanswered_question',
+          question: String(realArgs.question || '').slice(0, 500) || null,
+          priority: complaint ? 1 : 2,
+        });
+        responseParts.push({
+          functionResponse: { name: call.name, response: { result: 'Flagged for the team. Continue the conversation normally.' } },
+        });
       } else if (name === 'show_lead_form' || name.endsWith(':show_lead_form')) {
         showLeadForm = true;
         responseParts.push({
@@ -236,16 +267,37 @@ async function runAssistantTurn(history, context) {
   }
 
   // Tool rounds exhausted without a text reply: don't claim anything was saved.
-  return {
-    reply: capturedOrder
+  return done(
+    capturedOrder
       ? 'Thank you, I will email you the official price quote shortly\nIs there anything else I can help you with?'
       : capturedContact
         ? 'Thank you for sharing the information with me.'
-        : 'Sorry, I did not receive your email address\nCould you please type it here so I can send you the price quote?',
-    order: capturedOrder,
-    contact: capturedContact,
-    showLeadForm,
-  };
+        : escalations.length
+          ? 'Thank you, I have passed this to our team and a team member will get back to you shortly.'
+          : 'Sorry, I did not receive your email address\nCould you please type it here so I can send you the price quote?'
+  );
 }
 
-module.exports = { runAssistantTurn, MODEL_CHAIN };
+/**
+ * Plain text generation (no tools, no chat persona), e.g. summarising a
+ * company's website into a knowledge sheet. Falls through the model chain.
+ */
+async function generateText(prompt, { timeoutMs = 45000, maxOutputTokens = 2000 } = {}) {
+  let lastErr;
+  for (const model of MODEL_CHAIN) {
+    try {
+      const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: { temperature: 0.2, maxOutputTokens, abortSignal: AbortSignal.timeout(timeoutMs) },
+      });
+      const text = (response.text || '').trim();
+      if (text) return text;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('No text returned');
+}
+
+module.exports = { runAssistantTurn, generateText, MODEL_CHAIN };

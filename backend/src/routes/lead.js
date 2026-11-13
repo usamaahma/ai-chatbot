@@ -4,7 +4,9 @@ const { nanoid } = require('nanoid');
 
 const Lead = require('../models/Lead');
 const Conversation = require('../models/Conversation');
-const { clientIp } = require('../util');
+const { clientIp, str } = require('../util');
+const { getCompany } = require('../companies');
+const { notifyLead } = require('../notify');
 
 const router = express.Router();
 
@@ -21,7 +23,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Mid-conversation / header-button "request a callback" form.
 router.post('/lead', leadLimiter, async (req, res) => {
   try {
-    const { name, email, phone, message, conversationId, siteId, siteOrigin } = req.body || {};
+    const { name, email, phone, message } = req.body || {};
+    const conversationId = str(req.body?.conversationId, 64);
+    const siteId = str(req.body?.siteId, 80);
+    const siteOrigin = str(req.body?.siteOrigin, 500);
 
     if (typeof name !== 'string' || name.trim().length < 2) {
       return res.status(400).json({ error: 'Please enter your name.' });
@@ -54,6 +59,8 @@ router.post('/lead', leadLimiter, async (req, res) => {
       source: 'manual',
     });
 
+    const company = await getCompany(lead.siteId);
+    if (company) await notifyLead(company, lead); // resolves at once unless on Vercel
     res.status(201).json({ ok: true, id: String(lead._id) });
   } catch (err) {
     console.error('POST /api/lead failed:', err);
@@ -66,7 +73,10 @@ router.post('/lead', leadLimiter, async (req, res) => {
 // itself (with the visitor identity attached) so /api/chat just continues it.
 router.post('/identify', leadLimiter, async (req, res) => {
   try {
-    const { name, email, phone, siteId, siteOrigin, language, pageUrl } = req.body || {};
+    const { name, email, phone, pageUrl } = req.body || {};
+    const siteId = str(req.body?.siteId, 80);
+    const siteOrigin = str(req.body?.siteOrigin, 500);
+    const language = str(req.body?.language, 40);
 
     const cleanEmail = typeof email === 'string' ? email.trim() : '';
     if (!cleanEmail || !EMAIL_RE.test(cleanEmail)) {

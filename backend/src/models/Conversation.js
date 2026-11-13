@@ -15,6 +15,11 @@ const conversationSchema = new mongoose.Schema(
     publicId: { type: String, required: true, unique: true, index: true },
     siteOrigin: { type: String, default: null }, // website the widget was embedded on
     siteId: { type: String, default: 'default' }, // data-sireprinting-id on the script tag
+    // Random ID widget.js keeps on the customer's site, so a returning visitor
+    // can pick up their chat (see /api/resume).
+    visitorKey: { type: String, default: null },
+    previousConversationId: { type: String, default: null }, // their earlier chat, if any
+    previousSummary: { type: String, default: null }, // what that chat was about, for the AI
     pageUrl: { type: String, default: null }, // latest page the visitor chatted from
     visitor: {
       userAgent: { type: String, default: null },
@@ -31,5 +36,7 @@ const conversationSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+conversationSchema.index({ siteId: 1, visitorKey: 1, lastActivityAt: -1 });
 
 module.exports = mongoose.model('Conversation', conversationSchema);

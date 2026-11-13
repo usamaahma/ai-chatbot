@@ -52,6 +52,9 @@
 
   function create(canvas, src, opts) {
     opts = opts || {};
+    // Mouth geometry for this photo: the built-in default, or one measured
+    // for an uploaded avatar (see faceFromCorners).
+    var F = Object.assign({}, FACE, opts.face || {});
     var ctx = canvas.getContext('2d');
     var img = new Image();
     var ready = false;
@@ -81,34 +84,34 @@
     function draw() {
       if (!ready) return;
       fitCanvas();
-      var c = FACE.crop;
+      var c = F.crop;
       var k = canvas.width / c.size;
       ctx.setTransform(k, 0, 0, k, -c.x * k, -c.y * k);
       ctx.drawImage(img, 0, 0);
 
-      var s = open * FACE.maxOpen;
+      var s = open * F.maxOpen;
       if (s < 0.3) return;
 
-      var lift = s * FACE.liftRatio;
-      var x0 = Math.floor(FACE.mouthX - FACE.halfWidth);
-      var x1 = Math.ceil(FACE.mouthX + FACE.halfWidth);
-      var lower = FACE.jawBottom - FACE.lipLine;
-      var upper = FACE.lipLine - FACE.upperLipTop;
+      var lift = s * F.liftRatio;
+      var x0 = Math.floor(F.mouthX - F.halfWidth);
+      var x1 = Math.ceil(F.mouthX + F.halfWidth);
+      var lower = F.jawBottom - F.lipLine;
+      var upper = F.lipLine - F.upperLipTop;
       // 0 at the mouth corners, 1 at the centre
       function prof(x) {
-        var t = (x - FACE.mouthX) / FACE.halfWidth;
+        var t = (x - F.mouthX) / F.halfWidth;
         return Math.abs(t) >= 1 ? 0 : Math.pow(Math.cos(t * Math.PI / 2), 0.7);
       }
       var x;
 
       // 1. mouth interior as one smooth shape
       ctx.save();
-      ctx.filter = 'blur(' + (FACE.crop.size / 590).toFixed(2) + 'px)';
+      ctx.filter = 'blur(' + (F.crop.size / 590).toFixed(2) + 'px)';
       ctx.beginPath();
-      for (x = x0; x <= x1; x++) ctx.lineTo(x, FACE.lipLine - lift * prof(x));
-      for (x = x1; x >= x0; x--) ctx.lineTo(x, FACE.lipLine + s * prof(x));
+      for (x = x0; x <= x1; x++) ctx.lineTo(x, F.lipLine - lift * prof(x));
+      for (x = x1; x >= x0; x--) ctx.lineTo(x, F.lipLine + s * prof(x));
       ctx.closePath();
-      var g = ctx.createLinearGradient(0, FACE.lipLine - lift, 0, FACE.lipLine + s);
+      var g = ctx.createLinearGradient(0, F.lipLine - lift, 0, F.lipLine + s);
       g.addColorStop(0, '#140807');
       g.addColorStop(0.6, '#2a110e');
       g.addColorStop(1, '#3d1a16');
@@ -116,14 +119,14 @@
       ctx.fill();
 
       // 2. a soft hint of upper teeth when open wide
-      if (FACE.teeth && s > FACE.maxOpen * 0.45) {
+      if (F.teeth && s > F.maxOpen * 0.45) {
         ctx.beginPath();
-        var tx0 = FACE.mouthX - FACE.halfWidth * 0.6;
-        var tx1 = FACE.mouthX + FACE.halfWidth * 0.6;
-        for (x = tx0; x <= tx1; x++) ctx.lineTo(x, FACE.lipLine - lift * prof(x));
-        for (x = tx1; x >= tx0; x--) ctx.lineTo(x, FACE.lipLine - lift * prof(x) + Math.min(FACE.maxOpen * 0.25, s * 0.24) * prof(x));
+        var tx0 = F.mouthX - F.halfWidth * 0.6;
+        var tx1 = F.mouthX + F.halfWidth * 0.6;
+        for (x = tx0; x <= tx1; x++) ctx.lineTo(x, F.lipLine - lift * prof(x));
+        for (x = tx1; x >= tx0; x--) ctx.lineTo(x, F.lipLine - lift * prof(x) + Math.min(F.maxOpen * 0.25, s * 0.24) * prof(x));
         ctx.closePath();
-        ctx.fillStyle = 'rgba(214,204,192,' + Math.min(0.75, (s / FACE.maxOpen - 0.45) * 2) + ')';
+        ctx.fillStyle = 'rgba(214,204,192,' + Math.min(0.75, (s / F.maxOpen - 0.45) * 2) + ')';
         ctx.fill();
       }
       ctx.restore();
@@ -134,8 +137,8 @@
         var drop = s * p;
         if (drop < 0.2) continue;
         var up = lift * p;
-        ctx.drawImage(img, x, FACE.upperLipTop, 1, upper, x, FACE.upperLipTop, 1.5, upper - up);
-        ctx.drawImage(img, x, FACE.lipLine, 1, lower, x, FACE.lipLine + drop, 1.5, lower - drop);
+        ctx.drawImage(img, x, F.upperLipTop, 1, upper, x, F.upperLipTop, 1.5, upper - up);
+        ctx.drawImage(img, x, F.lipLine, 1, lower, x, F.lipLine + drop, 1.5, lower - drop);
       }
     }
 
@@ -200,5 +203,24 @@
     };
   }
 
-  window.TalkingHead = { create: create };
+  // Geometry for an uploaded photo from the two mouth corners (where the lips
+  // meet), in pixels of the square image. Proportions match the hand-measured
+  // default face: lip area above, jaw below, jaw drop all scale with mouth width.
+  function faceFromCorners(left, right, size) {
+    var halfWidth = Math.max(4, Math.abs(right.x - left.x) / 2);
+    var lipLine = (left.y + right.y) / 2;
+    return {
+      crop: { x: 0, y: 0, size: size },
+      mouthX: Math.round((left.x + right.x) / 2),
+      lipLine: Math.round(lipLine),
+      halfWidth: Math.round(halfWidth),
+      upperLipTop: Math.round(lipLine - halfWidth * 0.25),
+      jawBottom: Math.round(Math.min(size, lipLine + halfWidth * 1.45)),
+      maxOpen: Math.round(halfWidth * 0.28),
+      liftRatio: 0.12,
+      teeth: true,
+    };
+  }
+
+  window.TalkingHead = { create: create, faceFromCorners: faceFromCorners };
 })();

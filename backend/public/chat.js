@@ -3,7 +3,10 @@
 
   var params = new URLSearchParams(location.search);
   var SITE_ID = params.get('siteId') || 'default';
+  // Defaults until the company's own branding loads from /api/site/<siteId>;
+  // title / accent / agent on the URL (widget data attributes) still win.
   var TITLE = params.get('title') || 'Sire Printing';
+  var COMPANY_NAME = TITLE;
   var ACCENT = params.get('accent') || '#4f46e5';
   var PARENT_ORIGIN = params.get('parentOrigin') || '';
   var AGENT_NAME = params.get('agent') || 'Sire';
@@ -19,9 +22,26 @@
   }
   var PRODUCT = productFromUrl(PAGE_URL) || 'custom printed boxes';
 
+  // Visitor ID from widget.js (kept on the customer's site). Opened directly
+  // without the widget, fall back to this page's own storage.
+  var VISITOR_KEY = params.get('vk') || '';
+  if (!/^[A-Za-z0-9-]{8,64}$/.test(VISITOR_KEY)) {
+    try {
+      VISITOR_KEY = localStorage.getItem('sireprinting:vk') || '';
+      if (!/^[A-Za-z0-9-]{8,64}$/.test(VISITOR_KEY)) {
+        VISITOR_KEY = 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+        localStorage.setItem('sireprinting:vk', VISITOR_KEY);
+      }
+    } catch (e) { VISITOR_KEY = ''; }
+  }
+  var RETURNING = false; // set by resume(): this visitor has chatted before
+
   // Greeting as separate lines -> separate bubbles, like a live rep typing.
   function greetingFor(name) {
-    return (name ? 'Hi ' + name : 'Hi there, ' + AGENT_NAME + ' this side') + '\nLooking for ' + PRODUCT + '?\nI am live here to assist you. Lets chat';
+    var hello = RETURNING
+      ? (name ? 'Hi ' + name + ', welcome back' : 'Welcome back, ' + AGENT_NAME + ' this side')
+      : (name ? 'Hi ' + name : 'Hi there, ' + AGENT_NAME + ' this side');
+    return hello + '\nLooking for ' + PRODUCT + '?\nI am live here to assist you. Lets chat';
   }
   var GREETING = params.get('greeting') || greetingFor('');
 
@@ -55,13 +75,47 @@
   var elLeadSubmit = $('pb-lead-submit');
   var elLeadX = $('pb-lead-x');
 
-  elTitle.textContent = TITLE;
-  document.title = TITLE;
+  // Company name, chatbot name and color for this website's chatbot.
+  function applyBranding() {
+    var priv = $('pb-privacy');
+    if (priv) priv.href = '/privacy?siteId=' + encodeURIComponent(SITE_ID);
+    elTitle.textContent = TITLE;
+    document.title = TITLE;
+    $('pb-avatar-canvas').setAttribute('aria-label', AGENT_NAME + ', ' + COMPANY_NAME + ' customer service');
+    var intro = $('pb-lead-intro');
+    if (intro) intro.textContent = 'Leave your details and a ' + COMPANY_NAME + ' rep will get back to you.';
+    document.documentElement.style.setProperty('--accent', ACCENT);
+    document.documentElement.style.setProperty('--accent-dark', darken(ACCENT, 0.28));
+  }
 
-  // The agent's photo on a canvas, lip-synced to the voice.
-  var head = window.TalkingHead
-    ? TalkingHead.create($('pb-avatar-canvas'), '/avatar-csr.jpg')
-    : null;
+  // Resolves true (loaded), false (no such chatbot) or null (network trouble: use defaults).
+  async function loadSite() {
+    try {
+      var res = await fetch('/api/site/' + encodeURIComponent(SITE_ID));
+      if (res.status === 404) return false;
+      if (!res.ok) return null;
+      var c = await res.json();
+      COMPANY_NAME = c.companyName || COMPANY_NAME;
+      if (!params.get('title')) TITLE = c.companyName || TITLE;
+      if (!params.get('agent')) AGENT_NAME = c.chatbotName || AGENT_NAME;
+      if (!params.get('accent') && c.accentColor) ACCENT = c.accentColor;
+      if (c.avatar && c.avatar.url && c.avatar.face) AVATAR = c.avatar;
+      return true;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // The agent's photo on a canvas, lip-synced to the voice. Created once the
+  // company's branding has loaded (it may have its own photo); see boot.
+  var head = null;
+  var AVATAR = null; // { url, face } for a company's own photo, else the default face
+  function createHead() {
+    if (head || !window.TalkingHead) return;
+    head = AVATAR
+      ? TalkingHead.create($('pb-avatar-canvas'), AVATAR.url, { face: AVATAR.face })
+      : TalkingHead.create($('pb-avatar-canvas'), '/avatar-csr.jpg');
+  }
 
   // ---------- theme ----------
   function darken(hex, amt) {
@@ -72,8 +126,7 @@
     var rgb = parts.map(function (h) { return Math.max(0, Math.round(parseInt(h, 16) * (1 - amt))); });
     return 'rgb(' + rgb.join(',') + ')';
   }
-  document.documentElement.style.setProperty('--accent', ACCENT);
-  document.documentElement.style.setProperty('--accent-dark', darken(ACCENT, 0.28));
+  applyBranding();
 
   // ---------- state ----------
   // Kept in memory only: every fresh load of the chat starts a new conversation,
@@ -570,7 +623,7 @@
       if (!res.ok) { showLeadError(data.error || 'Could not send. Please try again.'); return; }
       elLeadForm.hidden = true;
       elLeadDone.hidden = false;
-      addMessage('bot', "Thanks " + name + "! Your request is in — a Sire Printing rep will contact you soon.");
+      addMessage('bot', "Thanks " + name + "! Your request is in — a " + COMPANY_NAME + " rep will contact you soon.");
       setTimeout(closeLeadForm, 2600);
       elLeadForm.reset();
     } catch (err) {
@@ -609,6 +662,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           conversationId: conversationId,
+          visitorKey: VISITOR_KEY || undefined,
           message: text,
           siteId: SITE_ID,
           siteOrigin: PARENT_ORIGIN || undefined,
@@ -673,13 +727,74 @@
     maybeSpeakGreeting();
   }
 
+  // Ask the server whether this visitor has a recent chat to continue.
+  async function resume() {
+    if (!VISITOR_KEY) return null;
+    try {
+      var res = await fetch('/api/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId: SITE_ID, visitorKey: VISITOR_KEY }),
+      });
+      return res.ok ? await res.json() : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Show the earlier messages (instantly, no typing pauses or voice) so what the
+  // visitor sees matches what the assistant remembers.
+  function showHistory(data) {
+    conversationId = data.conversationId;
+    chatStarted = true;
+    var note = document.createElement('div');
+    note.className = 'pb-note';
+    note.innerHTML = 'Continuing your earlier chat · <button type="button">Start a new chat</button>';
+    elMessages.appendChild(note);
+    data.messages.forEach(function (m) {
+      if (m.role === 'user') addMessage('user', m.content);
+      else splitBubbles(m.content).forEach(function (line) { addMessage('bot', line); });
+    });
+    note.querySelector('button').addEventListener('click', function () {
+      stopSpeaking();
+      conversationId = null; // the server links the new chat to this one
+      elMessages.innerHTML = '';
+      chatStarted = false;
+      if (!params.get('greeting')) GREETING = greetingFor(data.visitorName || '');
+      startChat();
+    });
+    scrollDown();
+    autosize();
+  }
+
   window.addEventListener('message', function (e) {
     if (PARENT_ORIGIN && e.origin !== PARENT_ORIGIN) return;
     if (e.data && e.data.type === 'sireprinting:opened') maybeSpeakGreeting();
   });
 
-  // No form up front: the agent greets the visitor and asks for their details in the chat.
-  startChat();
+  // Load this website's branding, then greet. No form up front: the agent asks
+  // for the visitor's details in the chat.
+  loadSite().then(function (ok) {
+    createHead();
+    if (ok === false) {
+      addMessage('bot', 'This chat is not set up yet. Please contact the website owner.');
+      elText.disabled = true;
+      elSend.disabled = true;
+      elMic.hidden = true;
+      elCall.hidden = true;
+      return;
+    }
+    applyBranding();
+    resume().then(function (r) {
+      if (r && r.conversationId && r.messages && r.messages.length) {
+        showHistory(r);
+        return;
+      }
+      RETURNING = !!(r && r.returning);
+      if (!params.get('greeting')) GREETING = greetingFor((r && r.visitorName) || '');
+      startChat();
+    });
+  });
 
   autosize();
   requestAnimationFrame(autosize);
